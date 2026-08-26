@@ -1,6 +1,6 @@
 # CLAUDE.md — Alpha Detective
 
-Financial-document RAG app: FastAPI + LlamaIndex hybrid retrieval backend (`backend/`), Next.js 16 JavaScript frontend (`frontend/`). Free Gemini tier + keyless fallback. Full product spec: `CLAUDE_CODE_PROMPT.md`. Binding technical contract: `docs/build/CONTRACTS.md` (v1.1). Decision log: `docs/build/DECISIONS.md`.
+Financial-document RAG app: FastAPI + LlamaIndex hybrid retrieval backend (`backend/`), Next.js 16 JavaScript frontend (`frontend/`). Free Gemini tier + keyless fallback. Full product spec: `CLAUDE_CODE_PROMPT.md`. Binding technical contract: `docs/build/CONTRACTS.md` (v1.2). Decision log: `docs/build/DECISIONS.md`.
 
 ## Commands
 
