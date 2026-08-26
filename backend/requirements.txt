@@ -14,6 +14,11 @@ chromadb==1.5.9
 pypdf==6.16.2
 pdfplumber==0.11.10
 python-docx==1.2.0
+# v1.2 any-document parsers -- both free, local, pure-Python. No OCR
+# dependency is added: a scanned/image-only PDF still fails per-file with
+# "no extractable text" (CONTRACTS.md SS1.3).
+openpyxl==3.1.5
+python-pptx==1.0.2
 tenacity==9.1.4
 pytest==9.1.1
 httpx==0.28.1

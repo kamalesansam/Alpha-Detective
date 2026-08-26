@@ -1,7 +1,9 @@
 """Settings & paths — the only reader of `.env` (pydantic-settings).
 
-Exactly five environment variables (see CONTRACTS.md §5); ports and paths are
-code constants. `GOOGLE_API_KEY` is never logged and never appears in errors.
+Twelve environment variables (CONTRACTS.md §5 — five from v1.1 plus the seven
+deployment variables added in v1.2); every other port and path stays a code
+constant. `GOOGLE_API_KEY` is never logged and never appears in errors, and
+`ACCESS_CODE` is never logged either (§5.2).
 
 Two hygiene rules are enforced here, both ratified in round 3:
 
@@ -19,6 +21,7 @@ Two hygiene rules are enforced here, both ratified in round 3:
 from __future__ import annotations
 
 import logging
+import os
 import re
 import string
 from functools import lru_cache
@@ -43,6 +46,26 @@ EMBED_CACHE_PATH = STORAGE_DIR / "embed_cache.json"
 
 # Local reranker model cache (first-run download target; derived data).
 RERANK_MODEL_DIR = STORAGE_DIR / "models"
+
+# Daily LLM budget counter (§1.11) — derived data, never a corruption source.
+LLM_BUDGET_PATH = STORAGE_DIR / "llm_budget.json"
+
+# Read-only seed corpus for AUTO_SEED (§2 ingest.seed_sample_data).
+SAMPLE_DATA_DIR = BACKEND_DIR / "sample_data"
+
+# --- Deployment constants (§2 config.py, §5) ---------------------------------
+
+DEFAULT_PORT = 8000
+LOCAL_HOST = "127.0.0.1"   # no PORT in the environment: never expose the LAN
+DEPLOY_HOST = "0.0.0.0"    # a PaaS dictated PORT: bind every interface
+RATE_LIMIT_WINDOW_S = 60
+RATE_LIMIT_MAX_TRACKED_IPS = 4096
+DEFAULT_CORS_ORIGIN = "http://localhost:3000"
+
+# Request-body ceiling for every non-upload /api route. A JSON question is at
+# most 2000 characters (§1.6); 1 MB is four orders of magnitude of slack and
+# still bounds what an unauthenticated caller can make the server buffer.
+MAX_JSON_BODY_BYTES = 1024 * 1024
 
 # --- Value hygiene -----------------------------------------------------------
 
@@ -78,8 +101,40 @@ def key_is_implausible(key: str) -> bool:
     return any(c not in _PRINTABLE for c in key)
 
 
+def parse_cors_origins(raw: str) -> list[str]:
+    """Split `CORS_ORIGINS` on commas; empty result falls back to the default.
+
+    A literal `*` is permitted (no credentials are ever sent) but the caller
+    logs one WARNING when it is used.
+    """
+    origins = [part.strip() for part in strip_inline_comment(raw or "").split(",")]
+    origins = [o for o in origins if o]
+    return origins or [DEFAULT_CORS_ORIGIN]
+
+
+def bind_host() -> str:
+    """`0.0.0.0` iff PORT is present in the environment, else `127.0.0.1`.
+
+    Presence — not value — is the signal: a PaaS that dictates the port needs
+    every interface bound; local dev must not start exposing itself to the LAN
+    as a side effect of deployment support (resolution 15).
+    """
+    return DEPLOY_HOST if os.environ.get("PORT") else LOCAL_HOST
+
+
+# Bounds for the integer settings: field -> (low, high). Malformed or
+# out-of-range values fall back to the field default with one warning.
+_INT_BOUNDS = {
+    "port": (1, 65535),
+    "daily_llm_budget": (0, None),
+    "rate_limit_per_min": (0, None),
+    "max_documents": (1, None),
+    "trusted_proxy_hops": (0, 16),
+}
+
+
 class Settings(BaseSettings):
-    """The five environment variables from backend/.env (CONTRACTS.md §5)."""
+    """The twelve environment variables from backend/.env (CONTRACTS.md §5)."""
 
     model_config = SettingsConfigDict(
         env_file=str(BACKEND_DIR / ".env"),
@@ -93,8 +148,28 @@ class Settings(BaseSettings):
     gemini_embed_model: str = "auto"
     rerank: Literal["on", "off"] = "on"
 
+    # --- v1.2 deployment variables (§5) --------------------------------------
+    port: int = DEFAULT_PORT
+    cors_origins: str = DEFAULT_CORS_ORIGIN
+    access_code: str = ""
+    daily_llm_budget: int = 200
+    rate_limit_per_min: int = 10
+    max_documents: int = 50
+    auto_seed: Literal["on", "off"] = "on"
+    # How many RIGHTMOST X-Forwarded-For entries were written by proxies we
+    # control. 0 (the default) ignores the header entirely and keys on the
+    # socket peer. Only a trusted proxy can write the rightmost N entries;
+    # everything left of them is attacker-supplied (§1.10, ruled r3).
+    trusted_proxy_hops: int = 0
+
     @field_validator(
-        "provider", "gemini_llm_model", "gemini_embed_model", "rerank", mode="before"
+        "provider",
+        "gemini_llm_model",
+        "gemini_embed_model",
+        "rerank",
+        "cors_origins",
+        "auto_seed",
+        mode="before",
     )
     @classmethod
     def _decomment(cls, value, info):
@@ -110,6 +185,85 @@ class Settings(BaseSettings):
             field = cls.model_fields.get(info.field_name)
             if field is not None and field.default is not PydanticUndefined:
                 return field.default
+        return cleaned
+
+    @field_validator(
+        "port",
+        "daily_llm_budget",
+        "rate_limit_per_min",
+        "max_documents",
+        "trusted_proxy_hops",
+        mode="before",
+    )
+    @classmethod
+    def _decomment_int(cls, value, info):
+        """De-comment and coerce; malformed/out-of-range => default + warning.
+
+        A deployment must never fail to boot because a dashboard field holds
+        `10 # per minute` or a nonsense port — the documented default is always
+        a safe posture (§5).
+        """
+        field = cls.model_fields.get(info.field_name)
+        default = field.default if field is not None else 0
+        if isinstance(value, bool):
+            return default
+        if isinstance(value, str):
+            cleaned = strip_inline_comment(value)
+            if cleaned == "":
+                return default
+            try:
+                value = int(cleaned)
+            except ValueError:
+                logger.warning(
+                    "%s is not an integer; falling back to %s",
+                    info.field_name.upper(),
+                    default,
+                )
+                return default
+        if not isinstance(value, int):
+            return default
+        low, high = _INT_BOUNDS.get(info.field_name, (None, None))
+        if (low is not None and value < low) or (high is not None and value > high):
+            logger.warning(
+                "%s=%s is out of range (%s..%s); falling back to %s",
+                info.field_name.upper(),
+                value,
+                low,
+                "-" if high is None else high,
+                default,
+            )
+            return default
+        return value
+
+    @field_validator("access_code", mode="before")
+    @classmethod
+    def _decomment_access_code(cls, value):
+        """De-comment per §5 (r3) — but never silently.
+
+        A dashboard has no comment syntax, so an operator-chosen code holding
+        ` #` is truncated and one starting with `#` collapses to empty, which
+        turns the gate OFF while the operator believes it is armed. The value
+        is still de-commented (the contract says every value is), but any
+        change is reported. The code itself is NEVER logged.
+        """
+        if not isinstance(value, str):
+            return value
+        raw = value.strip()
+        cleaned = strip_inline_comment(value)
+        if cleaned != raw:
+            if cleaned == "":
+                logger.warning(
+                    "ACCESS_CODE looks like a comment (it starts with '#') and was "
+                    "read as empty -- THE ACCESS GATE IS OFF. Choose a code with no "
+                    "'#'. The value is never logged."
+                )
+            else:
+                logger.warning(
+                    "ACCESS_CODE contained ' #' and was truncated at it (%d of %d "
+                    "characters kept). Choose a code with no '#'. The value is "
+                    "never logged.",
+                    len(cleaned), len(raw),
+                )
         return cleaned
 
     @field_validator("google_api_key", mode="before")

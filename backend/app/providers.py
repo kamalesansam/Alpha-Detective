@@ -68,6 +68,12 @@ _bundle: Optional[ProviderBundle] = None
 _embed_cache: Optional[dict] = None
 _embed_cache_lock = threading.Lock()
 
+# Daily LLM budget (§1.11). The counter lives on disk so a restart cannot
+# hand out a fresh allowance; the lock makes check-and-increment atomic
+# within the single instance the free tier runs.
+_budget_lock = threading.RLock()
+_budget_unwritable_logged = False
+
 
 # --- retryable-error detection ------------------------------------------------
 
@@ -307,6 +313,94 @@ def embed_texts_cached(texts: list[str], model_id: str) -> list[list[float]]:
             _persist_embed_cache()
 
     return [v for v in vectors]  # type: ignore[return-value]
+
+
+# --- daily LLM budget (§1.11) -------------------------------------------------
+
+def _utc_today() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def _read_budget() -> dict:
+    """`{"day","used"}` for TODAY. Derived data: anything unusable — missing,
+    unparseable, or from a previous day — silently reads as today/0 (§3.4)."""
+    today = _utc_today()
+    path = config.LLM_BUDGET_PATH
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(raw, dict) and raw.get("day") == today:
+            used = raw.get("used")
+            if isinstance(used, int) and not isinstance(used, bool) and used >= 0:
+                return {"day": today, "used": used}
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        pass
+    return {"day": today, "used": 0}
+
+
+def _write_budget(state: dict) -> bool:
+    """Atomic tmp + os.replace. False when the counter could not be persisted."""
+    global _budget_unwritable_logged
+    try:
+        config.ensure_storage_dirs()
+        tmp = config.LLM_BUDGET_PATH.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(state), encoding="utf-8")
+        os.replace(tmp, config.LLM_BUDGET_PATH)
+        return True
+    except OSError:
+        if not _budget_unwritable_logged:
+            _budget_unwritable_logged = True
+            logger.warning(
+                "llm_budget.json is not writable — serving without budget "
+                "accounting (availability over accounting)"
+            )
+        return False
+
+
+def _budget_limit() -> int:
+    return max(0, int(config.get_settings().daily_llm_budget))
+
+
+def llm_budget_state() -> dict:
+    """Read-only budget view for /api/health. Cheap, lazy day-rollover, never
+    key material, never a mutation."""
+    limit = _budget_limit()
+    with _budget_lock:
+        state = _read_budget()
+    used = state["used"]
+    return {
+        "used": used,
+        "limit": limit,
+        "remaining": max(0, limit - used),
+        "day": state["day"],
+    }
+
+
+def reserve_llm_call() -> bool:
+    """Atomic check-and-increment; True = the caller may make its one LLM call.
+
+    The ONLY mutator of the counter. Reservations are charged before the call
+    and never refunded (a refund path invites double-spend under concurrency).
+    Never raises for budget reasons: an unwritable counter logs once and
+    returns True.
+    """
+    limit = _budget_limit()
+    with _budget_lock:
+        state = _read_budget()
+        if state["used"] >= limit:
+            return False
+        state["used"] += 1
+        if not _write_budget(state):
+            return True
+        return True
+
+
+def reset_llm_budget_state() -> None:
+    """Drop the one-shot unwritable warning latch (tests)."""
+    global _budget_unwritable_logged
+    with _budget_lock:
+        _budget_unwritable_logged = False
 
 
 # --- the single LLM call ------------------------------------------------------

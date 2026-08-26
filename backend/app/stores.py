@@ -269,6 +269,12 @@ class StoreManager:
         pages = sum(int(d["pages"]) for d in self._manifest if d.get("pages") is not None)
         return docs, chunks, pages
 
+    def table_total(self) -> int:
+        """Sum of the manifest `tables` counts — the ONLY source for
+        `totals.tables`. A v1.1 entry with no `tables` key reads as 0, which is
+        tolerated state, not corruption (§3.2). Never recomputed from files."""
+        return sum(int(d.get("tables", 0) or 0) for d in self._manifest)
+
     def nodes_for(self, doc_ids: Optional[list[str]] = None) -> list:
         """Docstore TextNodes, deterministically ordered (upload order, chunk_ix)."""
         wanted = set(doc_ids) if doc_ids else None

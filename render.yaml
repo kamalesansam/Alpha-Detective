@@ -1,0 +1,77 @@
+# Alpha Detective — Render blueprint for the FastAPI backend (CONTRACTS.md §5.1).
+#
+# The frontend deploys separately on Vercel with BACKEND_ORIGIN pointed at this
+# service's URL. GOOGLE_API_KEY lives ONLY here, server-side: it is never sent
+# to the browser, never a NEXT_PUBLIC_* variable, and never logged (§5.2).
+#
+# Render injects PORT; it is deliberately NOT declared below. The app reads it
+# from the environment and binds 0.0.0.0 precisely because PORT is present —
+# locally, with no PORT set, it keeps binding 127.0.0.1 (resolution 15).
+#
+# Free-tier disk is EPHEMERAL: backend/storage/ (Chroma, docstore, manifest,
+# uploads, embed cache, budget counter) is wiped on every redeploy. That is why
+# AUTO_SEED=on exists — a redeployed demo comes back with backend/sample_data/
+# indexed instead of an empty corpus. Do not treat this instance as durable
+# storage. Free instances also cold-start; the frontend's health poll will show
+# "Backend offline" during spin-up and recover on its own.
+
+services:
+  - type: web
+    name: alpha-detective-api
+    env: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      # --- secrets: set in the Render dashboard, never in this file ---------
+      - key: GOOGLE_API_KEY
+        sync: false
+      # The quota gate for a public demo URL (§1.10). It is NOT a security
+      # boundary — the browser must hold it — it only stops a crawler from
+      # burning the free Gemini quota. Leave unset to disable the gate.
+      - key: ACCESS_CODE
+        sync: false
+      # The exact Vercel origin, e.g. https://alpha-detective.vercel.app.
+      # Leaving the default breaks the deployed frontend; `*` is permitted but
+      # discouraged.
+      - key: CORS_ORIGINS
+        sync: false
+
+      # --- provider ---------------------------------------------------------
+      - key: PROVIDER
+        value: auto
+      - key: GEMINI_LLM_MODEL
+        value: auto
+      - key: GEMINI_EMBED_MODEL
+        value: auto
+
+      # RERANK=off is the DOCUMENTED POSTURE for the 512 MB free tier: the
+      # cross-encoder plus ONNX runtime is the largest resident allocation in
+      # the process and the realistic OOM cause on this plan. Quality is safe —
+      # the 30-case eval gate is 100% with rerank on AND off — and /api/health
+      # reports the effective state truthfully. Keep RERANK=on locally.
+      - key: RERANK
+        value: "off"
+
+      # --- spend & abuse rails (§1.10 / §1.11) ------------------------------
+      # Per-instance, in-process state; one instance is the free-tier assumption.
+      - key: DAILY_LLM_BUDGET
+        value: "200"
+      - key: RATE_LIMIT_PER_MIN
+        value: "10"
+      # How many RIGHTMOST X-Forwarded-For entries are written by proxies we
+      # control. Render terminates TLS and appends exactly ONE hop, so 1 is
+      # correct here. Both directions are wrong in a specific way: leaving 0
+      # collapses every visitor into the proxy's single bucket (one visitor
+      # throttles everyone), and over-counting re-opens the spoofing bypass —
+      # a client can then choose its own bucket, or burn a victim's. If a CDN
+      # or WAF is ever put in front of this service, raise this count in the
+      # SAME change that adds it.
+      - key: TRUSTED_PROXY_HOPS
+        value: "1"
+      - key: MAX_DOCUMENTS
+        value: "50"
+      - key: AUTO_SEED
+        value: "on"
