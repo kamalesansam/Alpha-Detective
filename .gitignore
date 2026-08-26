@@ -1,0 +1,10 @@
+.env
+backend/.venv/
+backend/storage/
+__pycache__/
+*.pyc
+.pytest_cache/
+frontend/node_modules/
+frontend/.next/
+.DS_Store
+_to_delete/
