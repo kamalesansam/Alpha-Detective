@@ -11,14 +11,51 @@ function ScopeChip({ active, onClick, docId, label, count }) {
       data-doc-id={docId}
       onClick={onClick}
       aria-pressed={active}
-      className={`inline-flex h-7 items-center gap-1.5 rounded-control border px-3 text-xs font-medium ${
+      className={`inline-flex h-7 shrink-0 items-center gap-1.5 rounded-control border px-3 text-xs font-medium ${
         active
           ? "border-accent bg-accent-soft text-accent"
           : "border-border bg-surface text-text-2 hover:border-border-strong hover:text-text"
       }`}
     >
       <span className="max-w-64 truncate">{label}</span>
-      <span className={`font-mono text-[11px] ${active ? "" : "text-text-3"}`}>{count}</span>
+      {count > 0 ? (
+        <span className={`font-mono text-[11px] ${active ? "" : "text-text-3"}`}>{count}</span>
+      ) : null}
+    </button>
+  );
+}
+
+/**
+ * "Explain retrieval" switch (CONTRACTS §1.9 / §4.3). Flat track + knob on the
+ * existing tokens — no new colour, no gradient. Off by default; the state
+ * lives in the page's memory only, never localStorage.
+ */
+function ExplainSwitch({ checked, onChange }) {
+  return (
+    <button
+      type="button"
+      data-testid="explain-toggle"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      title="Show the retrieval funnel under each answer. Costs no extra AI calls."
+      className={`inline-flex h-7 shrink-0 items-center gap-2 rounded-control border px-2.5 text-xs font-medium ${
+        checked
+          ? "border-accent bg-accent-soft text-accent"
+          : "border-border bg-surface text-text-2 hover:border-border-strong hover:text-text"
+      }`}
+    >
+      <span
+        aria-hidden="true"
+        className={`relative h-3.5 w-6 shrink-0 rounded-full ${checked ? "bg-accent" : "bg-border-strong"}`}
+      >
+        <span
+          className={`absolute top-0.5 h-2.5 w-2.5 rounded-full bg-surface transition-[left] ${
+            checked ? "left-3" : "left-0.5"
+          }`}
+        />
+      </span>
+      <span>Explain retrieval</span>
     </button>
   );
 }
@@ -35,6 +72,8 @@ export default function AskPanel({
   initialQuestion = "",
   suggestions = [],
   showSuggestions = false,
+  explain = false,
+  onExplainChange,
 }) {
   const [question, setQuestion] = useState(initialQuestion);
   const [selected, setSelected] = useState([]); // doc ids; empty = all documents
@@ -96,24 +135,33 @@ export default function AskPanel({
         </button>
       </form>
 
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Document scope">
-        <ScopeChip
-          active={selected.length === 0}
-          onClick={() => setSelected([])}
-          docId="all"
-          label="All documents"
-          count={totalChunks}
-        />
-        {documents.map((d) => (
+      <div className="flex items-center gap-2">
+        <div
+          className={`flex min-w-0 flex-1 items-center gap-2 ${
+            showSuggestions ? "flex-wrap" : "flex-nowrap overflow-x-auto pb-0.5"
+          }`}
+          role="group"
+          aria-label="Document scope"
+        >
           <ScopeChip
-            key={d.id}
-            active={selected.includes(d.id)}
-            onClick={() => toggleDoc(d.id)}
-            docId={d.id}
-            label={d.name}
-            count={d.chunks}
+            active={selected.length === 0}
+            onClick={() => setSelected([])}
+            docId="all"
+            label="All documents"
+            count={totalChunks}
           />
-        ))}
+          {documents.map((d) => (
+            <ScopeChip
+              key={d.id}
+              active={selected.includes(d.id)}
+              onClick={() => toggleDoc(d.id)}
+              docId={d.id}
+              label={d.name}
+              count={d.chunks}
+            />
+          ))}
+        </div>
+        {onExplainChange ? <ExplainSwitch checked={explain} onChange={onExplainChange} /> : null}
       </div>
 
       {showSuggestions && suggestions.length > 0 ? (

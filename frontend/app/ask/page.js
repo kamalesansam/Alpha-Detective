@@ -20,6 +20,11 @@ export default function AskPage() {
   const [thread, setThread] = useState([]); // newest first
   const [busy, setBusy] = useState(false);
   const [prefill, setPrefill] = useState("");
+  // "Explain retrieval" (CONTRACTS §1.9 / §4.3): off by default, in-memory for
+  // the session only — no localStorage. When on, explain:true rides along on
+  // the FIRST request for each question, which is why the inspector costs
+  // zero extra LLM calls: we never re-issue a question to get it.
+  const [explain, setExplain] = useState(false);
   const idRef = useRef(0);
   const autoRanRef = useRef(false);
 
@@ -30,7 +35,11 @@ export default function AskPage() {
         if (!cancelled) setDocuments(d.documents || []);
       })
       .catch(() => {
-        /* offline banner (AppShell) explains; retried when offline clears */
+        // Offline and gated are both page-level states AppShell owns (it
+        // replaces this page entirely while the access gate is up), and the
+        // scope rail degrades to "All documents" on its own — there is no
+        // skeleton here to strand. Do NOT copy this empty catch to a surface
+        // that renders a skeleton (design r3 B-1 root cause).
       });
     return () => {
       cancelled = true;
@@ -59,15 +68,18 @@ export default function AskPage() {
           askedClock: formatClock(new Date()),
           result: null,
           error: null,
+          explain,
         },
         ...t,
       ]);
     } else {
-      setThread((t) => t.map((e) => (e.id === id ? { ...e, result: null, error: null } : e)));
+      setThread((t) =>
+        t.map((e) => (e.id === id ? { ...e, result: null, error: null, explain } : e))
+      );
     }
     setBusy(true);
     try {
-      const result = await postQuery({ question, docIds });
+      const result = await postQuery({ question, docIds, explain });
       setThread((t) => t.map((e) => (e.id === id ? { ...e, result } : e)));
     } catch (error) {
       setThread((t) => t.map((e) => (e.id === id ? { ...e, error } : e)));
@@ -104,6 +116,8 @@ export default function AskPage() {
           initialQuestion={prefill}
           suggestions={SUGGESTED}
           showSuggestions={thread.length === 0}
+          explain={explain}
+          onExplainChange={setExplain}
         />
       </div>
 
@@ -117,6 +131,7 @@ export default function AskPage() {
             meta={{ askedClock: e.askedClock, scopeLabel: e.scopeLabel }}
             onRetry={() => ask(e.question, e.docIds, e.id)}
             chunksByDocId={chunksByDocId}
+            explainRequested={e.explain}
           />
         ))}
       </div>

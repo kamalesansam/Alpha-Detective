@@ -14,15 +14,21 @@ export default function DocumentsPage() {
   const [docs, setDocs] = useState(null); // {documents, totals} | null while loading
   const [busyId, setBusyId] = useState(null);
   const [actionError, setActionError] = useState(null);
+  const [loadError, setLoadError] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
     listDocuments()
       .then((d) => {
-        if (!cancelled) setDocs(d);
+        if (!cancelled) {
+          setDocs(d);
+          setLoadError(null);
+        }
       })
-      .catch(() => {
-        /* offline banner (AppShell) explains; retried when offline clears */
+      .catch((err) => {
+        // AppShell explains offline / gated at page level — but record the
+        // failure so the skeleton terminates instead of promising forever.
+        if (!cancelled) setLoadError(err);
       });
     return () => {
       cancelled = true;
@@ -50,7 +56,7 @@ export default function DocumentsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <UploadDropzone disabled={offline} onUploaded={() => requestRefresh()} />
+      <UploadDropzone disabled={offline || Boolean(loadError)} onUploaded={() => requestRefresh()} />
 
       {actionError ? (
         <ErrorBanner
@@ -61,10 +67,18 @@ export default function DocumentsPage() {
                 ? "That document is already gone — refreshing the list"
                 : actionError.message || "Delete failed"
           }
+          // §1.10: DELETE is throttled, so a 429 here needs the live countdown.
+          retryAfterS={actionError.code === "rate_limited" ? (actionError.retryAfterS ?? 30) : null}
         />
       ) : null}
 
-      {!docs ? (
+      {!docs && loadError ? (
+        <div className="rounded-card border border-border bg-surface px-5 py-4 text-[13px] text-text-2 shadow-card">
+          {loadError.code === "unauthorized"
+            ? "Enter the access code to load your documents."
+            : "Documents could not be loaded."}
+        </div>
+      ) : !docs ? (
         <div className="rounded-card border border-border bg-surface p-5 shadow-card">
           <Skeleton lines={4} />
         </div>

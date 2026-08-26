@@ -41,16 +41,21 @@ export default function OverviewPage() {
   const { health, offline, refreshKey } = useApp();
   const router = useRouter();
   const [docs, setDocs] = useState(null); // {documents, totals} | null while loading
+  const [loadError, setLoadError] = useState(null);
   const [q, setQ] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     listDocuments()
       .then((d) => {
-        if (!cancelled) setDocs(d);
+        if (!cancelled) {
+          setDocs(d);
+          setLoadError(null);
+        }
       })
-      .catch(() => {
-        /* offline banner (AppShell) explains; retried when offline clears */
+      .catch((err) => {
+        // Never leave a skeleton promising data whose request already failed.
+        if (!cancelled) setLoadError(err);
       });
     return () => {
       cancelled = true;
@@ -147,7 +152,9 @@ export default function OverviewPage() {
                   View all
                 </Link>
               </div>
-              {!docs ? (
+              {!docs && loadError ? (
+                <div className="px-5 py-4 text-[13px] text-text-2">Documents could not be loaded.</div>
+              ) : !docs ? (
                 <div className="p-5">
                   <Skeleton lines={3} />
                 </div>
@@ -243,7 +250,9 @@ export default function OverviewPage() {
 
             <div className={`flex flex-col gap-3 px-5 py-4 ${CARD}`}>
               <span className={LABEL}>Chunks per document</span>
-              {!docs ? (
+              {!docs && loadError ? (
+                <div className="text-[13px] text-text-2">Not available.</div>
+              ) : !docs ? (
                 <Skeleton lines={3} />
               ) : (
                 <div className="flex flex-col gap-2.5">

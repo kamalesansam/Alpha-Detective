@@ -6,7 +6,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { FileText, LayoutDashboard, MessageSquare, RefreshCw } from "lucide-react";
 import StatusPill from "./StatusPill";
 import ErrorBanner from "./ErrorBanner";
+import AccessCodePrompt from "./AccessCodePrompt";
 import { useHealth } from "./useHealth";
+import { onUnauthorized } from "@/lib/api";
 
 const AppContext = createContext({
   health: null,
@@ -40,11 +42,20 @@ export default function AppShell({ children }) {
   const router = useRouter();
   const { health, offline, refresh } = useHealth();
   const [refreshKey, setRefreshKey] = useState(0);
+  // §1.10 access gate. A 401 from ANY page raises one shared prompt here; the
+  // code itself lives in lib/api.js module memory, never in this component's
+  // state and never in localStorage.
+  const [gated, setGated] = useState(false);
+  // Nothing has *failed* until a submitted code comes back rejected, so the
+  // page-level banner stays out of the way until then (design r3 M-1).
+  const [rejected, setRejected] = useState(false);
 
   const requestRefresh = useCallback(() => {
     setRefreshKey((k) => k + 1);
     refresh();
   }, [refresh]);
+
+  useEffect(() => onUnauthorized(() => setGated(true)), []);
 
   useEffect(() => {
     function onKey(e) {
@@ -148,7 +159,26 @@ export default function AppShell({ children }) {
               {offline ? (
                 <ErrorBanner message="Backend offline — run `make dev` to start the API. This page reconnects automatically" />
               ) : null}
-              {children}
+              {/* design r3 B-1: while the gate is up the prompt renders INSTEAD of
+                  the page. Rendering both left every page in a skeleton that
+                  could never resolve, with a live dropzone and a live composer
+                  behind a gate the visitor had not passed — controls that look
+                  operable but silently discard input. */}
+              {gated ? (
+                <div className="flex flex-col gap-3">
+                  {rejected ? <ErrorBanner message="Access code required" /> : null}
+                  <AccessCodePrompt
+                    onRejected={setRejected}
+                    onUnlocked={() => {
+                      setGated(false);
+                      setRejected(false);
+                      requestRefresh();
+                    }}
+                  />
+                </div>
+              ) : (
+                children
+              )}
             </div>
           </main>
         </div>

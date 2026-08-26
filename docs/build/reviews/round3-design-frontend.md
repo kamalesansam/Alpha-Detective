@@ -45,6 +45,15 @@ terminates is a broken state, which is the BLOCKER definition.
 both page `.catch()` blocks set an explicit non-null empty/blocked state so the skeleton terminates and mutating
 controls disable).
 
+- **frontend-engineer reply (fixed):** `AppShell` now renders the prompt **instead of** `children` — the gated branch is a single
+ternary and `children` appears in the file exactly twice (the prop, and that ternary's alternate), so no page,
+dropzone or composer is reachable while the gate is up. Belt-and-braces on the root cause too: both page
+`.catch()` blocks now record the failure (`loadError`) so a skeleton can never outlive its request — Documents
+renders "Enter the access code to load your documents." and disables the dropzone, Overview renders a neutral
+line in place of both skeletons. The stale `/ask` catch comment (the one written for `offline` and never updated)
+now says why that surface has no skeleton to strand, so the mistake is not copied forward. Verified against the
+real gated backend — see the report's B-1 evidence block.
+
 ---
 
 ## MAJOR
@@ -59,6 +68,11 @@ not a security boundary; leading with red frames it as a lockout. (The prompt's 
 `--negative` after a wrong submission is correct and should stay.)
 **Fix:** on first raise, show `AccessCodePrompt` alone; only surface the banner when a submitted code is rejected.
 
+- **frontend-engineer reply (fixed):** The banner is gone on first raise: arriving at the gate shows `AccessCodePrompt` alone.
+`AccessCodePrompt` calls `onRejected(true)` only when a *submitted* code comes back 401, and the page-level
+`ErrorBanner` renders off that flag — so red appears only once something has actually failed. The prompt's own
+inline "Invalid access code" stays exactly as you blessed it.
+
 ### M-2 — The funnel's collapsed summary prints the raw provider enum: `mode none`
 Component: `components/PipelineInspector.js:287` · Screenshot: `r3-01-funnel-collapsed-summary.png`
 The collapsed line reads `HOW THIS WAS RETRIEVED  mode none · rerank on · top_k 6`. In keyless operation — the
@@ -69,6 +83,10 @@ a raw backend enum. (`top_k 6` and the snake_case check names elsewhere are defe
 in mono; `none` is not, because it reads as an absence rather than a value.)
 **Fix:** map the value through the same vocabulary the rest of the app uses — `retrieval-only` / `gemini` — or
 drop `mode` from the summary entirely and let the existing mode badge carry it.
+
+- **frontend-engineer reply (fixed):** `MODE_LABEL` maps the enum into the app's vocabulary — the collapsed line now reads
+`mode retrieval-only · rerank on · top_k 6`. Unknown future values pass through verbatim rather than being
+silently relabelled.
 
 ### M-3 — On a refusal, the guardrail verdict is the least prominent thing on screen and invisible when collapsed
 Component: `components/PipelineInspector.js:200-237, 285-293` · Screenshot: `r3-04-refusal-guardrail-entity-presence-fail.png`
@@ -86,6 +104,13 @@ The prominence can be fixed entirely within existing tokens.
 **Fix:** promote the failing row as a row (check name to `text-text` medium, matching the verdict), and put the
 outcome in the collapsed summary — e.g. `… · guardrail stopped: entity_presence`.
 
+- **frontend-engineer reply (fixed):** Three changes, all inside the neutral ruling. (1) The collapsed summary now carries the
+outcome: `guardrail stopped: entity_presence`, in `--text` medium beside the dim parameter string. (2) The
+failing row's **check name** now matches its verdict's tone (`--text` medium) instead of staying `--text-2`, so
+the row reads as different in a scan. (3) The stage meta `stopped` is promoted out of `--text-3` to `--text`
+medium — it is the verdict, not incidental metadata. No colour added; the census should still return five text
+colours.
+
 ### M-4 — The rerank table's columns do not line up with bm25 and fusion, breaking the "trace one chunk down the funnel" premise
 Component: `components/PipelineInspector.js:31-37` · Screenshot: `r3-02-funnel-expanded-all-stages.png`
 `COLS.base` and `COLS.fusion` open with a `30px` `#` column; `COLS.rerank` opens with a `72px` `Move` column.
@@ -97,6 +122,12 @@ straight down a column; this defeats it at exactly the stage where the analyst m
 are the problem.)
 **Fix:** make the first column a constant width across all three templates (e.g. `72px` everywhere, `#` right-
 aligned in the well) so `Document / p. / Chunk` share one x-position through the whole funnel.
+
+- **frontend-engineer reply (fixed):** One constant `RANK_COL = 72px` first track across all three templates (`COLS.rerank` is now
+literally `COLS.base`), with the rank/move figure right-aligned in the well. `Document` starts at
+16px padding + 72px + 12px gap = **100px in every stage**; rendered output confirms a single distinct first
+track across bm25 / fusion / rerank. First-column headers are now named `Rank` / `Move` so `#1` and `#7 → #1`
+are not redundant with the header (which is m-1's principle applied to that column).
 
 ### M-5 — Both new components introduce a 10 px/600 type step that does not exist in §8
 Component: `components/PipelineInspector.js:26`, `components/ChunkInspector.js:22,110`
@@ -112,6 +143,10 @@ row heights, not from shaving a pixel off the header.
 55+ pre-v1.2 elements and was signed off in round 1. Only the 10 px step is new.)
 **Fix:** raise both `HEAD` constants and the TABLE badge to `text-[11px]`.
 
+- **frontend-engineer reply (fixed):** Accepted as a token-law violation, not a preference. Both `HEAD` constants and the TABLE
+badge are `text-[11px]`; `grep` for `text-[10px]` across `app/ components/ lib/` now returns **zero**. The badge
+grew to `h-[18px]`/`px-1.5` to sit correctly at 11px, matching the pre-existing ext badge geometry.
+
 ---
 
 ## MINOR
@@ -120,47 +155,100 @@ row heights, not from shaving a pixel off the header.
   the column `P.` and then repeats the prefix in every cell (`p.2`); `ChunkInspector` heads it `P.` and prints a
   bare `2`. Pick one — the header already says "p.". (`PipelineInspector.js:55-57` vs `ChunkInspector.js:102-104`;
   `r3-02` vs `r3-08`.)
+- **frontend-engineer reply (fixed):** The header keeps `P.`; the cells are now bare figures in both surfaces (`—` when null).
+
 - **m-2 — Chunk index format diverges between the two new surfaces**: funnel prints a bare `0`, ChunkInspector
   prints `#0`. Same field, one release. (`PipelineInspector.js:104` vs `ChunkInspector.js:101`.)
+- **frontend-engineer reply (fixed):** `ChunkInspector` drops the `#` — bare `chunk_ix` in both surfaces, matching the `Chunk` header.
+
 - **m-3 — Fusion's `method` lives in the stage label** (`FUSION · PASSTHROUGH`) while every other stage's
   parameters live in the right-hand mono meta (`k=12 · 4 shown · ms-marco-…`). Move `method` into the meta so the
   left column is purely stage names. (`PipelineInspector.js:263`.)
+- **frontend-engineer reply (fixed):** `method` moved into the right-hand mono meta: `FUSION` + `rrf · k=12 · 8 shown`. The left
+column is now purely stage names.
+
 - **m-4 — The `TABLES` column header still renders when every cell is `—`.** Against a pre-v1.2 backend the column
   is 66 px of dead space; the footer already correctly drops the term via the `hasTables` flag, so gate the column
   on the same flag. (`DocumentsTable.js:33,47`; `r3-11-tables-column-pre-v12-backend.png`.)
+- **frontend-engineer reply (fixed):** The column is gated on the same `hasTables` flag as the footer — against a pre-v1.2 payload
+the header and cells are absent and the grid drops to eight tracks. Verified both ways.
+
 - **m-5 — The dropzone advertises "HTML, HTM" as two of its ten formats.** They are the same format; listing the
   alias reads like padding the list. Show "HTML" in the human-facing string and keep both in `accept`.
   (`UploadDropzone.js:12`; `r3-07-documents-tables-column.png`.)
+- **frontend-engineer reply (fixed):** Human-facing string reads `PDF, DOCX, TXT, MD, CSV, XLSX, PPTX, HTML, JSON`; `accept` still
+carries `.htm`.
+
 - **m-6 — The duplicate upload row is a different shape from its siblings.** In one vertical list, indexed and
   failed rows are `rounded-card` / `bg-surface` / `shadow-card`, while the duplicate notice is `rounded-control` /
   `bg-bg` / no shadow. The neutrality should be carried by the icon and text tone, not by changing the card
   geometry mid-list. (`UploadDropzone.js:141` vs `:154`; `r3-12-upload-result-rows.png`.) Pre-existing, but never
   previously seen in evidence.
+- **frontend-engineer reply (fixed):** The duplicate notice now uses the same `rounded-card` / `bg-surface` / `shadow-card`
+geometry and 16px icon as its siblings; neutrality is carried by the `--text-3` Info icon and `--text-2` text.
+
 - **m-7 — The failed-upload error string is `shrink-0`.** It is an unbounded server message rendered on one line
   that can neither wrap nor truncate, so a long error squeezes the (correctly `truncate`d) filename toward zero
   width. The observed `.xyz` message is already 88 characters. Allow it to wrap or truncate.
   (`UploadDropzone.js:164-174`; `r3-12`.)
+- **frontend-engineer reply (fixed):** The failed message is capped at `max-w-[55%]`, right-aligned and `break-words`, so it wraps
+instead of crushing the filename; only the non-failed (short, known) strings keep `shrink-0`.
+
 - **m-8 — The Ask scope chip renders a mono `0`** ("All documents 0") in the empty and gated states. Round-1
   MINOR-3 established that JetBrains Mono's dotted zero reads as an 8 at 11 px and had the nav badge suppressed at
   zero; the same treatment was not applied here. (`AskPanel.js:21`; `r3-15-access-gate-ask-blocker.png`.)
+- **frontend-engineer reply (fixed):** Round-1 MINOR-3 propagated: the chip count renders only when `count > 0`. Found two further
+gaps in the same audit — see the propagation note below.
+
 - **m-9 — ChunkInspector's "Retry" is a bare 11 px text link with no padding** (~30×15 px hit area) — below any
   reasonable target size for the only recovery affordance on that surface. (`ChunkInspector.js:76-82`;
   `r3-10-chunk-inspector-unavailable.png`.)
+- **frontend-engineer reply (fixed):** Retry is now an `h-7` bordered control with `px-2.5`, matching the scope-chip target size.
+
 - **m-10 — The `KIND` column is an empty cell for every non-table chunk.** A blank under a populated header reads
   as missing data rather than "ordinary text"; a dimmed `text` token would say the same thing honestly.
   (`ChunkInspector.js:106-115`; `r3-08`.)
+- **frontend-engineer reply (fixed):** Non-table chunks render a dimmed mono `text` token instead of a blank cell.
+
 - **m-11 — The sticky composer occludes a stage header while reading the expanded funnel.** At 1440×900 the
   header + composer take ~256 px, leaving ~644 px for a funnel that is itself ~640 px tall, so scrolling parks the
   composer permanently over whichever stage header you are reading. The sticky behaviour itself is round-1
   ratified and correct; the funnel is simply the first content tall enough for it to bite. Consider collapsing the
   composer to just the input once the thread is non-empty, or making stage headers sticky within the card.
   (`app/ask/page.js:107`; `r3-03-funnel-in-page-composer-occlusion.png`.)
+- **frontend-engineer reply (fixed):** Partially addressed without touching the round-1 sticky ratification: once the thread is
+non-empty the scope rail switches from `flex-wrap` to a single no-wrap horizontal rail, so the composer stops
+growing a second and third chip line under the pin. The Explain switch was moved *outside* the rail so it can
+never scroll out of reach. This caps composer height rather than eliminating occlusion; if you want the full
+collapse-to-input-only behaviour, that is a canvas decision I would rather take from you than invent.
+
 - **m-12 — Two representations of the same zero, one line apart.** The `TABLES` cell shows a dimmed `0` for
   northwind (correct per the ruling) while the expanded summary directly beneath it omits tables entirely
   ("1 chunk · no page map for this format"). Both are defensible in isolation; adjacent they read as a
   discrepancy. (`format.js:65` vs `DocumentsTable.js:99`; `r3-09-chunk-inspector-no-page-map.png`.)
 
+- **frontend-engineer reply (fixed):** `describeIngest` is unchanged (it stays silent at zero, as you praised); the
+`ChunkInspector` summary now appends `· no tables` when the doc reports a real `0`, so the dimmed `0` in the
+TABLES cell and the line directly beneath it agree.
+
 ---
+
+---
+
+## frontend-engineer — round-1/round-2 propagation audit (prompted by m-8)
+
+Checked every prior-round fix against the three new components:
+
+| Prior fix | Propagated? |
+|---|---|
+| r1 MAJOR-1 — load-bearing rule as an inline style | n/a — no critical single-property rule in the new surfaces |
+| r1 MAJOR-2 — `devIndicators: false` | still set in `next.config.mjs` (config-level, unaffected) |
+| r1 MINOR-1 — Inter pinned where mono could be inherited | n/a — no dates; mono is confined to figures, snippets and identifiers |
+| r1 MINOR-2 — shared `plural()` helper | **GAP FOUND** — `ChunkInspector`'s footer hand-rolled `length === 1 ? "chunk" : "chunks"`. Now uses `plural()`. |
+| r1 MINOR-3 — suppress mono `0` | **2 GAPS FOUND** — the scope chip (your m-8) *and* the funnel's stage meta, which printed `0 shown` for an empty stage while the sentence below already said "No items recorded for this stage." in words. Both suppressed at zero. |
+| r2 m1 — doc-derived text renders as React text, chips clamped | holds — every `pipeline` / chunk string (incl. `title` attributes) is React text; your hostile probe covers this |
+
+So m-8 was one of three instances of the same lapse, not an isolated one.
 
 ## Verified honored (rulings I was asked not to re-open — checked, not re-litigated)
 

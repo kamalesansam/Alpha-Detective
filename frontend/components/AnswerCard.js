@@ -6,6 +6,7 @@ import CitationChip from "./CitationChip";
 import SourceCard from "./SourceCard";
 import Skeleton from "./Skeleton";
 import ErrorBanner from "./ErrorBanner";
+import PipelineInspector from "./PipelineInspector";
 import { formatMs, plural } from "@/lib/format";
 
 const LABEL = "text-[11px] font-semibold uppercase tracking-[0.06em] text-text-3";
@@ -32,8 +33,11 @@ function AnswerText({ answer, onChip, validNs }) {
 
 function errorProps(error, onRetry) {
   if (error.code === "rate_limited") {
+    // §4.1 (changed in v1.2): use the server's envelope message so the same
+    // path reads correctly for the provider limit ("Free-tier rate limit hit")
+    // and for the local per-IP throttle ("Too many requests — slow down").
     return {
-      message: "Free-tier rate limit hit",
+      message: error.message || "Free-tier rate limit hit",
       retryAfterS: error.retryAfterS ?? 30,
       onRetry,
     };
@@ -41,7 +45,19 @@ function errorProps(error, onRetry) {
   if (error.code === "offline") {
     return { message: "Backend offline — run `make dev` to start the API", onRetry };
   }
+  if (error.code === "unauthorized") {
+    // The shared prompt is raised by AppShell; retry once it is unlocked.
+    return { message: error.message || "Access code required", onRetry };
+  }
   return { message: error.message || "Request failed", onRetry };
+}
+
+// §4.2 (new in v1.2): the amber note is selected by `degraded_reason`. Both
+// are amber notes, not errors — retrieval never stopped.
+function excerptNote(result) {
+  return result?.degraded_reason === "daily_budget"
+    ? "Daily AI budget reached — showing matched excerpts"
+    : "No API key configured — showing matched excerpts";
 }
 
 /**
@@ -50,8 +66,18 @@ function errorProps(error, onRetry) {
  * badge, inline citation chips, timings footer, and the SOURCES grid.
  * Chip click scrolls to and briefly highlights the matching SourceCard.
  */
-export default function AnswerCard({ question, result, error, meta, onRetry, chunksByDocId }) {
+export default function AnswerCard({
+  question,
+  result,
+  error,
+  meta,
+  onRetry,
+  chunksByDocId,
+  explainRequested = false,
+}) {
   const [highlightN, setHighlightN] = useState(null);
+  // Collapsed by default, in-memory for the session — no persistence (§1.9).
+  const [pipelineOpen, setPipelineOpen] = useState(false);
   const sourceRefs = useRef({});
   const timerRef = useRef(null);
 
@@ -69,6 +95,17 @@ export default function AnswerCard({ question, result, error, meta, onRetry, chu
   const citations = result?.citations ?? [];
   const generative = result?.mode === "generative";
   const t = result?.timings;
+  // `pipeline` exists iff the request set explain:true (§1.9). A backend that
+  // predates v1.2 simply omits it — the inspector then says "not available".
+  const pipeline = result?.pipeline ?? null;
+  const showInspector = Boolean(result) && (explainRequested || pipeline !== null);
+  const inspector = showInspector ? (
+    <PipelineInspector
+      pipeline={pipeline}
+      open={pipelineOpen}
+      onToggle={() => setPipelineOpen((v) => !v)}
+    />
+  ) : null;
 
   return (
     <section className="flex flex-col gap-2">
@@ -87,12 +124,15 @@ export default function AnswerCard({ question, result, error, meta, onRetry, chu
           <Skeleton lines={3} />
         </div>
       ) : result.no_answer ? (
-        <div
-          data-testid="no-answer-card"
-          className="rounded-card border border-border bg-surface px-4 py-3.5 text-sm leading-normal text-text-2 shadow-card"
-        >
-          {result.answer}
-        </div>
+        <>
+          <div
+            data-testid="no-answer-card"
+            className="rounded-card border border-border bg-surface px-4 py-3.5 text-sm leading-normal text-text-2 shadow-card"
+          >
+            {result.answer}
+          </div>
+          {inspector}
+        </>
       ) : (
         <>
           <div
@@ -120,7 +160,7 @@ export default function AnswerCard({ question, result, error, meta, onRetry, chu
               <div className="flex items-start gap-2 rounded-control border border-warning/20 bg-warning-soft px-3 py-2.5">
                 <Info size={14} strokeWidth={1.5} className="mt-0.5 shrink-0 text-warning" aria-hidden="true" />
                 <div className="text-[13px] leading-normal text-warning">
-                  Retrieval-only mode — no API key configured. Showing matched excerpts.
+                  {excerptNote(result)}
                 </div>
               </div>
             ) : null}
@@ -177,6 +217,8 @@ export default function AnswerCard({ question, result, error, meta, onRetry, chu
               </div>
             </div>
           ) : null}
+
+          {inspector}
         </>
       )}
     </section>

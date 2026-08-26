@@ -53,6 +53,20 @@ export function plural(n, noun) {
   return `${n} ${noun}${n === 1 ? "" : "s"}`;
 }
 
+/**
+ * Ingest shape, one line: "2 pages, 1 table → 9 chunks".
+ * `pages` is null for formats without a page map (§1.3) and `tables` is
+ * absent on a pre-v1.2 backend — both are simply left out rather than faked,
+ * and a zero table count stays silent.
+ */
+export function describeIngest({ pages, tables, chunks }) {
+  const parts = [];
+  if (pages != null && Number.isFinite(pages)) parts.push(plural(pages, "page"));
+  if (Number.isFinite(tables) && tables > 0) parts.push(plural(tables, "table"));
+  const produced = plural(Number.isFinite(chunks) ? chunks : 0, "chunk");
+  return parts.length > 0 ? `${parts.join(", ")} → ${produced}` : produced;
+}
+
 export function isToday(iso) {
   if (!iso) return false;
   const d = new Date(iso);

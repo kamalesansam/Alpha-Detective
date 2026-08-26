@@ -4,9 +4,14 @@ import { useRef, useState } from "react";
 import { Check, Info, Loader2, Upload, X } from "lucide-react";
 import ErrorBanner from "./ErrorBanner";
 import { uploadDocuments } from "@/lib/api";
-import { plural } from "@/lib/format";
+import { describeIngest } from "@/lib/format";
 
-const ACCEPT = ".pdf,.docx,.txt,.md,.csv";
+// The frozen §1.3 list — ten extensions, `ingest.ALLOWED_EXTS`. Keep this in
+// the same order as the contract so it can be diffed against it at a glance.
+const ACCEPT = ".pdf,.docx,.txt,.md,.csv,.xlsx,.pptx,.html,.htm,.json";
+// Human-facing list folds the .htm alias into HTML — listing both reads as
+// padding the count (design r3 m-5). `accept` above still carries both.
+const FORMATS = "PDF, DOCX, TXT, MD, CSV, XLSX, PPTX, HTML, JSON";
 
 /**
  * Drag/click multi-file upload. Per-file status list from the POST response:
@@ -40,7 +45,14 @@ export default function UploadDropzone({ onUploaded, disabled }) {
         files.map((f, i) => {
           const e = entries[i];
           if (!e) return { name: f.name, state: "failed", error: "no result returned" };
-          return { name: e.name || f.name, state: e.status, chunks: e.chunks, error: e.error };
+          return {
+            name: e.name || f.name,
+            state: e.status,
+            pages: e.pages,
+            tables: e.tables,
+            chunks: e.chunks,
+            error: e.error,
+          };
         })
       );
       onUploaded(entries);
@@ -75,7 +87,7 @@ export default function UploadDropzone({ onUploaded, disabled }) {
         data-testid="dropzone"
         role="button"
         tabIndex={0}
-        aria-label="Upload documents — PDF, DOCX, TXT, MD or CSV, max 25 MB each, up to 20 files"
+        aria-label={`Upload documents — ${FORMATS}; max 25 MB each, up to 20 files`}
         aria-disabled={blocked || undefined}
         onClick={openPicker}
         onKeyDown={(e) => {
@@ -96,7 +108,7 @@ export default function UploadDropzone({ onUploaded, disabled }) {
       >
         <Upload size={20} strokeWidth={1.5} className="text-text-3" aria-hidden="true" />
         <div className="text-sm font-medium text-text">Drop files or click to upload</div>
-        <div className="text-xs text-text-3">PDF, DOCX, TXT, MD, CSV · max 25 MB · up to 20 files</div>
+        <div className="text-xs text-text-3">{FORMATS} · max 25 MB · up to 20 files</div>
       </div>
       <input
         data-testid="file-input"
@@ -113,11 +125,9 @@ export default function UploadDropzone({ onUploaded, disabled }) {
       {requestError ? (
         <ErrorBanner
           message={
-            requestError.code === "rate_limited"
-              ? "Free-tier rate limit hit"
-              : requestError.code === "offline"
-                ? "Backend offline — run `make dev` to start the API"
-                : requestError.message || "Upload failed"
+            requestError.code === "offline"
+              ? "Backend offline — run `make dev` to start the API"
+              : requestError.message || "Upload failed"
           }
           retryAfterS={requestError.code === "rate_limited" ? (requestError.retryAfterS ?? 30) : null}
           onRetry={() => handleFiles(lastFilesRef.current)}
@@ -130,11 +140,14 @@ export default function UploadDropzone({ onUploaded, disabled }) {
             it.state === "duplicate" ? (
               <li
                 key={`${it.name}-${i}`}
-                className="flex items-start gap-2 rounded-control border border-border bg-bg px-3 py-2.5"
+                className="flex items-center gap-3 rounded-card border border-border bg-surface px-4 py-3 shadow-card"
               >
-                <Info size={14} strokeWidth={1.5} className="mt-0.5 shrink-0 text-text-3" aria-hidden="true" />
-                <span className="min-w-0 text-[13px] leading-normal text-text-2">
+                <Info size={16} strokeWidth={1.5} className="shrink-0 text-text-3" aria-hidden="true" />
+                <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-text-2">
                   {it.name} is already indexed — upload skipped.
+                </span>
+                <span className="shrink-0 font-mono text-[11px] text-text-3">
+                  {describeIngest(it)}
                 </span>
               </li>
             ) : (
@@ -151,14 +164,14 @@ export default function UploadDropzone({ onUploaded, disabled }) {
                 )}
                 <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-text">{it.name}</span>
                 <span
-                  className={`shrink-0 font-mono text-[11px] ${
-                    it.state === "failed" ? "text-negative" : "text-text-3"
+                  className={`min-w-0 max-w-[55%] break-words text-right font-mono text-[11px] ${
+                    it.state === "failed" ? "text-negative" : "shrink-0 text-text-3"
                   }`}
                 >
                   {it.state === "uploading"
                     ? "indexing…"
                     : it.state === "indexed"
-                      ? `+${plural(it.chunks, "chunk")}`
+                      ? describeIngest(it)
                       : it.error || "failed"}
                 </span>
               </li>
