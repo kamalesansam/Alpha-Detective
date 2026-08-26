@@ -1,0 +1,192 @@
+[
+  {
+    "question": "What was Meridian's Q2 FY2026 revenue?",
+    "expect_doc": "meridian_q2_fy2026_earnings_call.pdf",
+    "expect_substring": "$48.2",
+    "category": "trap",
+    "note": "cross-doc trap: must never be answered from Northwind or Helios; rank-1 must be Meridian"
+  },
+  {
+    "question": "How much money did Meridian make in the second quarter?",
+    "expect_doc": "meridian_q2_fy2026_earnings_call.pdf",
+    "expect_substring": "$48.2",
+    "category": "paraphrase"
+  },
+  {
+    "question": "What top line did Meridian report for Q2 FY2026?",
+    "expect_doc": "meridian_q2_fy2026_earnings_call.pdf",
+    "expect_substring": "$48.2",
+    "category": "paraphrase",
+    "note": "'top line' never appears in the document; semantic paraphrase of revenue"
+  },
+  {
+    "question": "What was Meridian's net revenue retention (NRR) in Q2 FY2026?",
+    "expect_doc": "meridian_q2_fy2026_earnings_call.pdf",
+    "expect_substring": "118%",
+    "category": "table",
+    "note": "metrics-table value; question carries both spelled-out and abbreviated forms"
+  },
+  {
+    "question": "What was Meridian's annual recurring revenue (ARR) at the end of Q2 FY2026?",
+    "expect_doc": "meridian_q2_fy2026_earnings_call.pdf",
+    "expect_substring": "$210.4",
+    "category": "table"
+  },
+  {
+    "question": "How much cash did Meridian Systems have at the end of Q2 FY2026?",
+    "expect_doc": "meridian_q2_fy2026_earnings_call.pdf",
+    "expect_substring": "$312",
+    "category": "table"
+  },
+  {
+    "question": "What was Meridian's headcount at the end of Q2 FY2026?",
+    "expect_doc": "meridian_q2_fy2026_earnings_call.pdf",
+    "expect_substring": "1,240",
+    "category": "table",
+    "note": "spec SS7 writes the figure with a comma: 1,240"
+  },
+  {
+    "question": "What FY2026 full-year revenue guidance did Meridian Systems provide?",
+    "expect_doc": "meridian_q2_fy2026_earnings_call.pdf",
+    "expect_substring": "$196",
+    "category": "doc",
+    "note": "guidance range $196-200M; '$196' matches any dash/spelling of the range"
+  },
+  {
+    "question": "Who is the chief executive officer of Meridian Systems?",
+    "expect_doc": "meridian_q2_fy2026_earnings_call.pdf",
+    "expect_substring": "Daniel Okafor",
+    "category": "doc"
+  },
+  {
+    "question": "What was Meridian's GAAP net loss in Q2 FY2026?",
+    "expect_doc": "meridian_q2_fy2026_earnings_call.pdf",
+    "expect_substring": "3.1",
+    "category": "doc",
+    "note": "matches both $(3.1)M and $3.1 million renderings"
+  },
+  {
+    "question": "What was Meridian's non-GAAP operating margin in Q2 FY2026?",
+    "expect_doc": "meridian_q2_fy2026_earnings_call.pdf",
+    "expect_substring": "11%",
+    "category": "doc"
+  },
+  {
+    "question": "What was Northwind Retail's revenue in Q2 2026?",
+    "expect_doc": "northwind_retail_q2_2026_earnings.txt",
+    "expect_substring": "$1.84",
+    "category": "trap",
+    "note": "cross-doc trap: must never be answered from Meridian or Helios; rank-1 must be Northwind"
+  },
+  {
+    "question": "What were Northwind's total sales for the second quarter of 2026?",
+    "expect_doc": "northwind_retail_q2_2026_earnings.txt",
+    "expect_substring": "$1.84",
+    "category": "paraphrase"
+  },
+  {
+    "question": "What was Northwind Retail's diluted EPS in Q2 2026?",
+    "expect_doc": "northwind_retail_q2_2026_earnings.txt",
+    "expect_substring": "$1.12",
+    "category": "doc"
+  },
+  {
+    "question": "How much did Northwind earn per share in the second quarter?",
+    "expect_doc": "northwind_retail_q2_2026_earnings.txt",
+    "expect_substring": "$1.12",
+    "category": "paraphrase"
+  },
+  {
+    "question": "What was Northwind's gross margin in Q2 2026?",
+    "expect_doc": "northwind_retail_q2_2026_earnings.txt",
+    "expect_substring": "33.9%",
+    "category": "doc"
+  },
+  {
+    "question": "How many stores does Northwind Retail operate?",
+    "expect_doc": "northwind_retail_q2_2026_earnings.txt",
+    "expect_substring": "214",
+    "category": "doc"
+  },
+  {
+    "question": "What quarterly dividend did Northwind Retail declare?",
+    "expect_doc": "northwind_retail_q2_2026_earnings.txt",
+    "expect_substring": "$0.32",
+    "category": "doc"
+  },
+  {
+    "question": "How fast did Northwind's e-commerce sales grow in Q2 2026?",
+    "expect_doc": "northwind_retail_q2_2026_earnings.txt",
+    "expect_substring": "18%",
+    "category": "doc"
+  },
+  {
+    "question": "What was Northwind's same-store sales growth in Q2 2026?",
+    "expect_doc": "northwind_retail_q2_2026_earnings.txt",
+    "expect_substring": "2.6%",
+    "category": "doc"
+  },
+  {
+    "question": "What was Helios Energy's revenue in FY2025?",
+    "expect_doc": "helios_energy_fy2025_annual_report.docx",
+    "expect_substring": "$6.3",
+    "category": "trap",
+    "note": "cross-doc trap: must never be answered from Meridian or Northwind; rank-1 must be Helios"
+  },
+  {
+    "question": "What was Helios Energy's net debt at the end of FY2025?",
+    "expect_doc": "helios_energy_fy2025_annual_report.docx",
+    "expect_substring": "$4.1",
+    "category": "table"
+  },
+  {
+    "question": "What was Helios Energy's adjusted EBITDA in FY2025?",
+    "expect_doc": "helios_energy_fy2025_annual_report.docx",
+    "expect_substring": "$1.9",
+    "category": "table"
+  },
+  {
+    "question": "How much renewable generation capacity does Helios Energy operate?",
+    "expect_doc": "helios_energy_fy2025_annual_report.docx",
+    "expect_substring": "3.2 GW",
+    "category": "table",
+    "note": "spec SS7 writes '3.2 GW' with a space; samples must render the figure as written"
+  },
+  {
+    "question": "What is Helios Energy's capital expenditure guidance for FY2026?",
+    "expect_doc": "helios_energy_fy2025_annual_report.docx",
+    "expect_substring": "$1.1",
+    "category": "doc"
+  },
+  {
+    "question": "How many people work at Helios Energy?",
+    "expect_doc": "helios_energy_fy2025_annual_report.docx",
+    "expect_substring": "8,500",
+    "category": "paraphrase",
+    "note": "no 'employees/headcount' wording in the question; spec SS7 writes 8,500 with a comma"
+  },
+  {
+    "question": "What is Helios Energy's dividend payout policy?",
+    "expect_doc": "helios_energy_fy2025_annual_report.docx",
+    "expect_substring": "40%",
+    "category": "doc"
+  },
+  {
+    "question": "What was Meridian's Q3 FY2026 revenue?",
+    "expect_no_answer": true,
+    "category": "unanswerable",
+    "note": "wrong quarter -- corpus contains Q2 FY2026 only; must refuse, never substitute the Q2 figure"
+  },
+  {
+    "question": "What is Apple's revenue?",
+    "expect_no_answer": true,
+    "category": "unanswerable",
+    "note": "real-world company absent from the corpus; must refuse, never answer from model memory"
+  },
+  {
+    "question": "What is Northwind Retail's total headcount?",
+    "expect_no_answer": true,
+    "category": "unanswerable",
+    "note": "metric absent from the Northwind doc (headcount exists only for Meridian/Helios); must refuse"
+  }
+]
