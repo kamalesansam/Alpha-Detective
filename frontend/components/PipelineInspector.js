@@ -26,16 +26,31 @@ const LABEL = "text-[11px] font-semibold uppercase tracking-[0.06em] text-text-3
 const HEAD = "text-[11px] font-semibold uppercase tracking-[0.06em] text-text-3";
 const CELL = "font-mono text-[11px] text-text-2";
 
-// Column templates. The first column is a constant 72px well in every stage
+// Column tracks. The first column is a constant 72px well in every stage
 // (design r3 M-4) so Document / p. / Chunk share one x-position down the whole
 // funnel; rerank's `#7 → #1` is the widest thing it must hold. Snippet takes
 // the slack; figures stay fixed so numerals line up (tabular, §8).
+//
+// These are applied as an INLINE STYLE, never as a Tailwind arbitrary-value
+// class, and that is deliberate — do not "tidy" them back into a
+// `grid-cols-[…]` className. Tailwind discovers class names by scanning source
+// TEXT, so an interpolated `grid-cols-[${RANK_COL}_…]` names a rule that is
+// never generated: `next dev` regenerates CSS on the fly and looks correct,
+// while the production build silently omits it and the grid collapses into
+// overlapping rows. `npm run build` exits 0 in both cases, eslint is clean, and
+// Tailwind emits no warning — the failure is invisible to every gate we run.
+// An inline style has no extraction step to lose, needs no CSS rule at all, and
+// lets RANK_COL enforce the cross-stage invariant in code rather than by
+// comment discipline. Same reasoning as the SourceCard accent rule (r1 MAJOR-1).
 const RANK_COL = "72px";
-const COLS = {
-  base: `grid grid-cols-[${RANK_COL}_minmax(96px,150px)_34px_42px_minmax(0,1fr)_58px] items-center gap-x-3 px-4`,
-  fusion: `grid grid-cols-[${RANK_COL}_minmax(96px,150px)_34px_42px_46px_46px_minmax(0,1fr)_58px] items-center gap-x-3 px-4`,
+const TRACKS = {
+  base: `${RANK_COL} minmax(96px,150px) 34px 42px minmax(0,1fr) 58px`,
+  fusion: `${RANK_COL} minmax(96px,150px) 34px 42px 46px 46px minmax(0,1fr) 58px`,
 };
-COLS.rerank = COLS.base;
+TRACKS.rerank = TRACKS.base;
+
+// Static utilities only — every token here appears literally in this file.
+const ROW = "grid items-center gap-x-3 px-4";
 
 const TITLES = {
   bm25: "BM25 · sparse",
@@ -109,7 +124,7 @@ function ItemTable({ items }) {
   if (items.length === 0) return <NoItems />;
   return (
     <div className="pb-1.5">
-      <div className={`${COLS.base} h-6 ${HEAD}`}>
+      <div className={`${ROW} h-6 ${HEAD}`} style={{ gridTemplateColumns: TRACKS.base }}>
         <span className="text-right">Rank</span>
         <span>Document</span>
         <span>p.</span>
@@ -118,7 +133,11 @@ function ItemTable({ items }) {
         <span className="text-right">Score</span>
       </div>
       {items.map((it, i) => (
-        <div key={itemKey(it, i)} className={`${COLS.base} h-7 ${i % 2 === 1 ? "bg-bg" : ""}`}>
+        <div
+          key={itemKey(it, i)}
+          className={`${ROW} h-7 ${i % 2 === 1 ? "bg-bg" : ""}`}
+          style={{ gridTemplateColumns: TRACKS.base }}
+        >
           <span className={`${CELL} text-right`}>{rank(i + 1)}</span>
           <span className="truncate text-[11px] text-text" title={it.doc_name}>
             {it.doc_name}
@@ -138,7 +157,7 @@ function FusionTable({ items }) {
   if (items.length === 0) return <NoItems />;
   return (
     <div className="pb-1.5">
-      <div className={`${COLS.fusion} h-6 ${HEAD}`}>
+      <div className={`${ROW} h-6 ${HEAD}`} style={{ gridTemplateColumns: TRACKS.fusion }}>
         <span className="text-right">Rank</span>
         <span>Document</span>
         <span>p.</span>
@@ -149,7 +168,11 @@ function FusionTable({ items }) {
         <span className="text-right">Score</span>
       </div>
       {items.map((it, i) => (
-        <div key={itemKey(it, i)} className={`${COLS.fusion} h-7 ${i % 2 === 1 ? "bg-bg" : ""}`}>
+        <div
+          key={itemKey(it, i)}
+          className={`${ROW} h-7 ${i % 2 === 1 ? "bg-bg" : ""}`}
+          style={{ gridTemplateColumns: TRACKS.fusion }}
+        >
           <span className={`${CELL} text-right`}>{rank(i + 1)}</span>
           <span className="truncate text-[11px] text-text" title={it.doc_name}>
             {it.doc_name}
@@ -183,7 +206,7 @@ function RerankTable({ items }) {
   if (items.length === 0) return <NoItems />;
   return (
     <div className="pb-1.5">
-      <div className={`${COLS.rerank} h-6 ${HEAD}`}>
+      <div className={`${ROW} h-6 ${HEAD}`} style={{ gridTemplateColumns: TRACKS.rerank }}>
         <span className="text-right">Move</span>
         <span>Document</span>
         <span>p.</span>
@@ -192,7 +215,11 @@ function RerankTable({ items }) {
         <span className="text-right">Score</span>
       </div>
       {items.map((it, i) => (
-        <div key={itemKey(it, i)} className={`${COLS.rerank} h-7 ${i % 2 === 1 ? "bg-bg" : ""}`}>
+        <div
+          key={itemKey(it, i)}
+          className={`${ROW} h-7 ${i % 2 === 1 ? "bg-bg" : ""}`}
+          style={{ gridTemplateColumns: TRACKS.rerank }}
+        >
           <span
             className="whitespace-nowrap text-right font-mono text-[11px] text-text-3"
             aria-label={`rank ${it.before_rank} to ${it.after_rank}`}
