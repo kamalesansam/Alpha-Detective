@@ -174,6 +174,22 @@ def resolve_models(settings: config.Settings) -> tuple[Optional[str], Optional[s
     return llm_name, embed_name
 
 
+def init_none_mode() -> ProviderBundle:
+    """Enter retrieval-only mode: no LLM, no embeddings, no Google objects.
+
+    Used both for an explicit `PROVIDER=none` and as the `auto` fallback when
+    provider startup fails (ratified r3).
+    """
+    global _bundle
+    from llama_index.core import Settings as LISettings
+
+    LISettings.llm = None
+    LISettings.embed_model = None
+    _bundle = ProviderBundle(provider="none")
+    logger.info("provider=none (retrieval-only mode): no LLM, no embeddings")
+    return _bundle
+
+
 def init_providers(settings: config.Settings) -> ProviderBundle:
     """Build the provider bundle and set llama_index Settings explicitly.
 
@@ -182,15 +198,12 @@ def init_providers(settings: config.Settings) -> ProviderBundle:
     Google object is constructed.
     """
     global _bundle
-    from llama_index.core import Settings as LISettings
 
     provider = settings.effective_provider
     if provider == "none":
-        LISettings.llm = None
-        LISettings.embed_model = None
-        _bundle = ProviderBundle(provider="none")
-        logger.info("provider=none (retrieval-only mode): no LLM, no embeddings")
-        return _bundle
+        return init_none_mode()
+
+    from llama_index.core import Settings as LISettings
 
     llm_name, embed_name = resolve_models(settings)
     key = settings.google_api_key.strip()

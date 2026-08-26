@@ -88,11 +88,22 @@ async def lifespan(app: FastAPI):
         logger.critical("configuration error: %s", exc)
         raise SystemExit(1) from exc
 
+    # `auto` is best-effort: any provider failure degrades to retrieval-only
+    # rather than killing the process. An explicit PROVIDER=gemini is a promise
+    # the operator made, so it still fails loudly. (Ratified r3.)
     try:
-        providers.init_providers(settings)
-    except (providers.ProviderError, providers.RateLimitedError) as exc:
-        logger.critical("provider startup failed: %s", exc)
-        raise SystemExit(1) from exc
+        bundle = providers.init_providers(settings)
+    except Exception as exc:  # noqa: BLE001 - auto must survive *any* failure
+        if settings.provider != "auto":
+            logger.critical("provider startup failed: %s", exc)
+            raise SystemExit(1) from exc
+        logger.warning(
+            "provider auto-detection failed (%s); falling back to retrieval-only "
+            "mode. Search works; generated answers are disabled until a valid "
+            "GOOGLE_API_KEY is present in backend/.env.",
+            exc,
+        )
+        bundle = providers.init_none_mode()
 
     try:
         stores.init_store()  # load + reconcile
@@ -102,12 +113,12 @@ async def lifespan(app: FastAPI):
 
     rerank.init_reranker()
 
-    if settings.effective_provider == "gemini":
+    if bundle.provider == "gemini":
         ingest.backfill_missing_embeddings()
 
     logger.info(
         "startup complete: provider=%s rerank=%s docs=%d",
-        settings.effective_provider,
+        bundle.provider,
         rerank.effective_rerank(),
         stores.get_store().counts()[0],
     )

@@ -16,3 +16,6 @@ One line per decision. Date · decision · why. Details live in CONTRACTS.md (v1
 - 2026-08-25 · No file-download/static route exists at all; uploads are write-only storage · smaller attack surface.
 - 2026-08-25 · Design: file-type chips stay neutral; red/green/amber reserved exclusively for status semantics · avoids "PDF=error" misreads (design round 2).
 - 2026-08-25 · Canvas artifact URL is stable across design rounds (round-2-density republished in place) · Sam's review link must not rot.
+- 2026-08-26 · `.env` values are de-commented before validation and `GOOGLE_API_KEY` is dropped when implausible (leading `#`, whitespace, `#`, non-ASCII/non-printable) with one value-free warning — ratified r3 · python-dotenv keeps the comment as the value when the value is empty, so the shipped `.env.example` produced a 76-char "key" that reached an HTTP auth header and killed startup with a misleading "check the API key and network" error.
+- 2026-08-26 · `PROVIDER=auto` is best-effort: any provider-init or model-resolution failure logs its cause once and boots retrieval-only (`provider:"none"`); explicit `PROVIDER=gemini` keeps the fail-loud `SystemExit(1)` — ratified r3 · `auto` means "figure it out" and keyless mode is fully supported; an operator who names a provider explicitly wants to hear it fail.
+

@@ -311,6 +311,18 @@ def stack(tmp_path, samples, qa):
         yield SimpleNamespace(client=client, storage=storage, samples=samples)
 
 
+@pytest.fixture()
+def auto_stack(tmp_path, samples, qa):
+    """Fresh app under PROVIDER=auto with no key (ratified r3).
+
+    `auto` is the shipped default, so it must be exercised: keyless it has to
+    resolve to retrieval-only and behave exactly like PROVIDER=none.
+    """
+    storage = tmp_path / "storage"
+    with app_client(storage, env={"PROVIDER": "auto"}) as client:
+        yield SimpleNamespace(client=client, storage=storage, samples=samples)
+
+
 @pytest.fixture(scope="module")
 def indexed_stack(tmp_path_factory, samples, qa):
     """Module-scoped app with the three samples indexed. Read-only for its module."""

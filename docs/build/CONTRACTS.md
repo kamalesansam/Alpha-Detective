@@ -273,11 +273,13 @@ Exactly five vars (`backend/.env`, read only by `config.py`; ports/paths are cod
 
 | Var | Values | Default | Effect |
 |---|---|---|---|
-| `GOOGLE_API_KEY` | string | empty | empty ⇒ `auto` resolves to `none`. Never logged, never in errors |
-| `PROVIDER` | `auto\|gemini\|none` | `auto` | `auto`: gemini iff key set. Explicit `gemini` w/o key ⇒ startup exit 1 with clear message. `none` ignores any key |
+| `GOOGLE_API_KEY` | string | empty | empty ⇒ `auto` resolves to `none`. Never logged, never in errors. **(ratified r3)** Sanitized at load: a trailing `# …` comment is stripped; a value that starts with `#`, contains whitespace or `#`, or holds any non-ASCII/non-printable character is treated as **UNSET** with one warning that never includes the value |
+| `PROVIDER` | `auto\|gemini\|none` | `auto` | `auto`: gemini iff key set. **(ratified r3)** `auto` is best-effort — if provider init or `auto` model resolution fails for **any** reason, log the cause once and boot in retrieval-only `none` mode (health reports `provider:"none"`); never exit. Explicit `gemini` w/o key, or whose init fails, ⇒ startup exit 1 with clear message. `none` ignores any key |
 | `GEMINI_LLM_MODEL` | `auto\|<model id>` | `auto` | `auto` = first live-API match of `gemini-flash-latest → gemini-2.5-flash → gemini-2.0-flash` |
 | `GEMINI_EMBED_MODEL` | `auto\|<model id>` | `auto` | `auto` = first match of `gemini-embedding-001 → gemini-embedding-2-preview` |
 | `RERANK` | `on\|off` | `on` | requests the local cross-encoder stage; effective state may be `off` if model unavailable (health tells the truth) |
+
+**(ratified r3)** All five values are defensively de-commented (`\s+#.*$`) before validation, and a comment-only value falls back to the field default — a commented template line can never produce a garbage value or an enum failure. `backend/.env.example` must stay pure ASCII with every comment on its own line; `tests/test_env_hygiene.py` pins both.
 
 **Four retrieval paths** (final keep = `top_k`, default 6; guardrail always precedes any LLM call):
 

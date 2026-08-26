@@ -8,3 +8,9 @@ frontend/node_modules/
 frontend/.next/
 .DS_Store
 _to_delete/
+alpha-detective.bundle
+
+# local agent-tooling artifacts (machine-specific, never shared)
+.claude-flow/
+.claude/proven-config.json
+.claude/.proven-config-version

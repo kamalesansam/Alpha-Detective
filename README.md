@@ -72,6 +72,7 @@ RERANK=on            # local cross-encoder; auto-degrades to off if the model ca
 
 ## Troubleshooting
 
+- **Backend won't start after editing `.env`** — put each value alone on its line and every comment on its own line. `python-dotenv` only strips a trailing `# …` when a real value precedes it; for an empty value (`GOOGLE_API_KEY=   # note`) the comment *becomes* the value. Since r3 the backend detects that shape, ignores the bogus key with a warning, and boots retrieval-only instead of dying — but the key still won't be used. Copy a fresh template if in doubt: `cp backend/.env.example backend/.env`. A startup log line reading `provider=none` when you expected `gemini` means your key was rejected as malformed.
 - **429 / "Free-tier rate limit hit"** — Gemini free tier is ~10 req/min with a daily cap; wait for the countdown. Check your exact quotas in AI Studio.
 - **chromadb install fails on Python 3.13** — `brew install python@3.12`, delete `backend/.venv`, re-run `make setup` (it uses `python3`; adjust PATH so 3.12 wins).
 - **Ports busy** — free 3000/8000 or export `PORT` for Next and change the uvicorn `--port`.
