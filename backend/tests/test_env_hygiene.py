@@ -25,6 +25,7 @@ from fastapi.testclient import TestClient
 
 from conftest import (
     BACKEND_DIR,
+    HERMETIC_ENV,
     _set_env,
     load_backend,
     purge_backend_modules,
@@ -55,7 +56,11 @@ def prepared_app(storage_dir, env=None, env_file=None, break_provider=False):
     backend/.env -- the developer's real .env is never touched. `break_provider`
     makes the model lister raise, exercising the seam at providers.py.
     """
-    merged = {"GOOGLE_API_KEY": None, "PROVIDER": None, "RERANK": "off"}
+    # Same hermetic baseline as every other app build (conftest.HERMETIC_ENV):
+    # nothing ambient may reconfigure the app. PROVIDER is unpinned here on
+    # purpose -- these tests are ABOUT provider resolution.
+    merged = dict(HERMETIC_ENV)
+    merged["PROVIDER"] = None
     merged.update(env or {})
     with _set_env(merged):
         main = load_backend(storage_dir)
@@ -302,13 +307,106 @@ def test_env_example_has_no_inline_comments():
     )
 
 
-def test_env_example_declares_all_five_vars():
+V12_ENV_VARS = (
+    "GOOGLE_API_KEY",
+    "PROVIDER",
+    "GEMINI_LLM_MODEL",
+    "GEMINI_EMBED_MODEL",
+    "RERANK",
+    "PORT",
+    "CORS_ORIGINS",
+    "ACCESS_CODE",
+    "DAILY_LLM_BUDGET",
+    "RATE_LIMIT_PER_MIN",
+    "MAX_DOCUMENTS",
+    "AUTO_SEED",
+    "TRUSTED_PROXY_HOPS",  # 13th var, ratified r3 (SS1.10 client identity)
+)
+
+
+@pytest.mark.parametrize("var", V12_ENV_VARS)
+def test_env_example_declares_all_thirteen_vars(var):
+    """CONTRACTS.md SS5: '.env.example must document all twelve vars ...
+    tests/test_env_hygiene.py pins this.'"""
     text = ENV_EXAMPLE.read_text(encoding="utf-8")
-    for var in (
-        "GOOGLE_API_KEY",
-        "PROVIDER",
-        "GEMINI_LLM_MODEL",
-        "GEMINI_EMBED_MODEL",
-        "RERANK",
-    ):
-        assert f"\n{var}=" in f"\n{text}", f"{var} missing from .env.example"
+    assert f"\n{var}=" in f"\n{text}", (
+        f"{var} missing from .env.example -- SS5 grew the matrix from five vars to twelve"
+    )
+
+
+def test_env_example_declares_no_undocumented_vars():
+    text = ENV_EXAMPLE.read_text(encoding="utf-8")
+    declared = {
+        line.split("=", 1)[0].strip()
+        for line in text.splitlines()
+        if "=" in line and not line.strip().startswith("#")
+    }
+    extra = declared - set(V12_ENV_VARS)
+    assert not extra, (
+        "SS5: 'no future variable may be added without an architect ratification'. "
+        f"Undocumented vars in .env.example: {sorted(extra)}"
+    )
+
+
+@pytest.mark.parametrize("var", ["GOOGLE_API_KEY", "ACCESS_CODE"])
+def test_env_example_ships_secrets_empty(var):
+    """SS5: the template must ship ACCESS_CODE / GOOGLE_API_KEY EMPTY."""
+    for line in ENV_EXAMPLE.read_text(encoding="utf-8").splitlines():
+        if line.strip().startswith(f"{var}="):
+            assert line.strip() == f"{var}=", (
+                f"SS5: {var} must ship empty in .env.example, got {line.strip()!r}"
+            )
+            return
+    raise AssertionError(f"{var} not declared in .env.example")
+
+
+# --------------------------------------------------------------------------
+# (f) harness hermeticity -- the run must mean the same thing on every machine
+# --------------------------------------------------------------------------
+def test_hermetic_env_pins_every_contract_variable():
+    """Anything left unpinned is read from the developer's backend/.env or an
+    inherited process env, and silently reconfigures the app under test."""
+    missing = [v for v in V12_ENV_VARS if v not in HERMETIC_ENV]
+    assert not missing, (
+        f"SS5 variables not pinned by the harness: {missing}. Every one of them can "
+        "reconfigure the app; an unpinned ACCESS_CODE alone turned this suite into "
+        "132 failures of `401 unauthorized` that looked like product bugs."
+    )
+    assert HERMETIC_ENV["ACCESS_CODE"] == "", "the gate must be off for the general fixtures"
+    assert HERMETIC_ENV["GOOGLE_API_KEY"] is None, "keyless by construction"
+
+
+@pytest.mark.parametrize(
+    "var,value",
+    [
+        ("ACCESS_CODE", "ambient-code-1234"),
+        ("AUTO_SEED", "on"),
+        ("MAX_DOCUMENTS", "1"),
+        ("RATE_LIMIT_PER_MIN", "1"),
+        ("DAILY_LLM_BUDGET", "0"),
+        ("PROVIDER", "gemini"),
+    ],
+)
+def test_ambient_environment_cannot_reconfigure_the_app_under_test(tmp_path, samples, qa, var, value):
+    """A hostile/ambient value in the process environment -- exactly what a `.env`
+    edited for a screenshot, or an inherited shell export, looks like to
+    pydantic-settings -- must not reach the app the harness builds."""
+    from conftest import _set_env, app_client, upload_bytes
+
+    with _set_env({var: value}):
+        with app_client(tmp_path / "storage") as client:
+            health = client.get("/api/health").json()
+            listed = client.get("/api/documents")
+            up = upload_bytes(client, [("a.txt", b"ambient isolation probe body")])
+            settings = qa.backend_module("config").get_settings()
+
+    assert listed.status_code == 200, (
+        f"ambient {var}={value!r} reached the app: GET /api/documents returned "
+        f"{listed.status_code} ({listed.text[:120]})"
+    )
+    assert up.status_code == 200 and up.json()["documents"][0]["status"] == "indexed", (
+        f"ambient {var}={value!r} broke uploads: {up.status_code} {up.text[:160]}"
+    )
+    assert health["provider"] == "none", f"ambient {var} changed the provider: {health}"
+    assert settings.access_code == "", f"ambient {var} leaked ACCESS_CODE: {settings.access_code!r}"
+    assert settings.auto_seed == "off" and settings.rate_limit_per_min == 0, settings

@@ -103,7 +103,7 @@ def test_delete_lifecycle(stack, qa):
     assert resp.json() == {"ok": True}
 
     listing = stack.client.get("/api/documents").json()
-    assert listing == {"documents": [], "totals": {"documents": 0, "chunks": 0, "pages": 0}}
+    assert listing == {"documents": [], "totals": {"documents": 0, "chunks": 0, "pages": 0, "tables": 0}}
 
     # not idempotent: a second DELETE is 404
     qa.assert_error_envelope(

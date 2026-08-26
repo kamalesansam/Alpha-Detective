@@ -44,17 +44,20 @@ def live(tmp_path_factory, samples, qa):
         yield SimpleNamespace(client=client, health=health)
 
 
-def _ask(live, qa, question):
+def _ask(live, qa, question, explain=False):
     assert _llm_calls["n"] < LLM_CALL_BUDGET, "LLM call budget for this file would be exceeded"
     _llm_calls["n"] += 1
-    resp = qa.query(live.client, question)
+    # `explain` is free by contract (SS1.9.1: zero extra LLM and embedding calls),
+    # so asking for it never changes this file's budget arithmetic.
+    kwargs = {"explain": True} if explain else {}
+    resp = qa.query(live.client, question, **kwargs)
     if resp.status_code in (429, 502):
         pytest.skip(f"live Gemini throttled/unavailable (HTTP {resp.status_code}) -- free tier respected")
     return resp
 
 
 def test_live_answer_contains_exact_figure_with_valid_citations(live, qa):
-    resp = _ask(live, qa, "What was Meridian's Q2 FY2026 revenue?")
+    resp = _ask(live, qa, "What was Meridian's Q2 FY2026 revenue?", explain=True)
     assert resp.status_code == 200, resp.text[:400]
     body = resp.json()
     assert body["mode"] == "generative"
@@ -82,6 +85,51 @@ def test_live_answer_contains_exact_figure_with_valid_citations(live, qa):
 
     assert body["timings"]["llm_ms"] > 0
     assert qa.live_key not in resp.text, "API key leaked into a query response"
+
+    # SS1.9.3 gemini-mode inspector -- the ONLY place `dense` and `fusion.method:"rrf"`
+    # can be observed at all, because every other suite is keyless by construction.
+    pipeline = body.get("pipeline")
+    assert pipeline is not None, "SS1.9: explain:true must return a pipeline"
+    stages = {st["stage"]: st for st in pipeline["stages"]}
+    assert pipeline["mode"] == "gemini", pipeline["mode"]
+    assert "dense" in stages, (
+        f"SS1.9.3: the dense stage is present in gemini mode, got {sorted(stages)}"
+    )
+    assert stages["dense"]["k"] == 8, f"SS1.9.3: DENSE_TOP_K = 8, got {stages['dense']['k']!r}"
+    assert stages["bm25"]["k"] == 8, f"SS1.9.3: SPARSE_TOP_K = 8, got {stages['bm25']['k']!r}"
+    assert stages["fusion"]["method"] == "rrf", (
+        f"SS1.9.3: gemini mode runs real RRF fusion, got {stages['fusion']['method']!r}"
+    )
+    assert stages["fusion"]["k"] == 12, stages["fusion"]["k"]
+    assert any(i["dense_rank"] is not None for i in stages["fusion"]["items"]), (
+        "SS1.9.3: with a dense retriever running, some fusion item must carry a dense_rank"
+    )
+    for item in stages["fusion"]["items"]:
+        assert item["bm25_rank"] is not None or item["dense_rank"] is not None, item
+    assert stages["guardrail"]["passed"] is True, stages["guardrail"]
+    assert qa.live_key not in str(pipeline), "SS5.2: no key material in the pipeline payload"
+
+
+def test_live_explain_matches_plain_and_costs_no_extra_llm_call(live, qa):
+    """SS1.9.1 rule 2 + rule 4, verified on the REAL gemini path.
+
+    Spends one LLM call for the plain query. The explain re-issue would spend a
+    second, so instead this compares against the budget counter: an explain-only
+    request must move `llm_budget.used` by exactly the same amount as the mode it
+    reports (extractive/degraded moves it 0; generative moves it 1).
+    """
+    before = live.client.get("/api/health").json()["llm_budget"]["used"]
+    resp = _ask(live, qa, "What was Northwind Retail's diluted EPS in Q2 2026?", explain=True)
+    assert resp.status_code == 200, resp.text[:400]
+    body = resp.json()
+    after = live.client.get("/api/health").json()["llm_budget"]["used"]
+    expected = 1 if body["mode"] == "generative" else 0
+    assert after - before == expected, (
+        f"SS1.9.1 rule 4 / SS1.11: an explain query charges exactly the LLM calls it "
+        f"actually made ({expected}); budget moved {before} -> {after}"
+    )
+    assert body["pipeline"]["top_k"] == 6
+    assert body["degraded_reason"] is None or body["degraded_reason"] == "daily_budget"
 
 
 def test_live_unanswerable_returns_exact_refusal(live, qa):
